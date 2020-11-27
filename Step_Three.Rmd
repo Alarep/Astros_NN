@@ -1,0 +1,19 @@
+---
+title: "Step 3"
+author: "Jack Perala"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# usual r setup block
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Starting point
+```{r}
+# Start coding here.
+# Reading in the csv file
+bangs <- read.csv(file = "astros_bangs_20200127.csv", header = TRUE, sep = ",", dec = ".", na.strings = c(""))
+
+```
