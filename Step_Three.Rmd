@@ -6,14 +6,31 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-# usual r setup block
+# usual r setup block also loading appropriate packages here
 knitr::opts_chunk$set(echo = TRUE)
+library(caret)
 ```
 
 ## Starting point
-```{r}
-# Start coding here.
-# Reading in the csv file
-bangs <- read.csv(file = "astros_bangs_20200127.csv", header = TRUE, sep = ",", dec = ".", na.strings = c(""))
+```{r load cleanedData, include=FALSE}
+# This block is used to define the data as well as split it into training and test sets.
 
+# Cleaned data has renamed the bangs category to numOfBangs in order to avoid confusion. numOfBangs is now a factor with five levels rather than a character value to allow one hot encoding. has_bangs subcategory has also been changed to a factor with two levels rather than a char for the same reason.
+
+set.seed(123) # Setting the seed for consistency
+
+# Splitting the data into appropriately sized training and test sets. For now this is split at 70% training and 30% test.
+bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.7 * nrow(bangs)))
+
+bangTrain = bangs[bangIndex,] # Creating the training data set
+bangTest = bangs[-bangIndex,] # Creating the testing data set
 ```
+
+```{r}
+# One-hot encoding the categorical variables
+# I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
+# OHE on numOfBangs 
+# OHE on bang?
+```
+## Citations
+https://rpubs.com/ID_Tech/S1
