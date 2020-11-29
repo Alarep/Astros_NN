@@ -9,6 +9,8 @@ output: html_document
 # usual r setup block also loading appropriate packages here
 knitr::opts_chunk$set(echo = TRUE)
 library(caret)
+library(mltools)
+library(data.table)
 ```
 
 ## Starting point
@@ -29,8 +31,9 @@ bangTest = bangs[-bangIndex,] # Creating the testing data set
 ```{r}
 # One-hot encoding the categorical variables
 # I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
-# OHE on numOfBangs 
-# OHE on bang?
+# OHE on numOfBangs and has_bangs
+OHBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
+OHBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
 ```
 ## Citations
 https://rpubs.com/ID_Tech/S1
