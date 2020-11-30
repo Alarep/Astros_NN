@@ -86,17 +86,17 @@ setnames(trainedNN,
                  'KnuckleCurvePitch',
                  'SinkerPitch',
                  'SliderPitch',
-                 'UknownPitch',
+                 'UnknownPitch',
                  'BreakingBall',
                  'Changeup',
                  'FastBall',
-                 'UnknownType',
-                 'bangNo',
-                 'bangYes',
-                 'oneBang',
-                 'twoBangs', 
-                 'threeBangs', 
-                 'zeroBangs'),
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
          skip_absent = TRUE
          )
 
@@ -135,13 +135,13 @@ setnames(testNN,
                  'BreakingBall',
                  'Changeup',
                  'FastBall',
-                 'UnknownType',
-                 'bangNo',
-                 'bangYes',
-                 'oneBang',
-                 'twoBangs', 
-                 'threeBangs', 
-                 'zeroBangs'),
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
          skip_absent = TRUE
          )
 ```
@@ -156,7 +156,7 @@ The number of hidden neurons should be less than twice the size of the input lay
 # Recent edits
 # change number of hidden nodes/layers
 
-nnFormula <- "BreakingBall + Changeup + FastBall + UnknownType~."
+nnFormula <- "BreakingBall + Changeup + FastBall + UnknownPitchType~."
 
 bangTrainModel <- neuralnet(nnFormula, 
                             data = trainedNN,
@@ -200,19 +200,15 @@ tester <- subset(testNN, select = c('AwayScore',
                  "SinkerPitch",
                  "SliderPitch",
                  "UnknownPitch",
-                 "BreakingBall",
-                 "Changeup",
-                 "FastBall",
-                 "UnknownType",
-                 "bangNo",
-                 "bangYes",
-                 "oneBang",
-                 "twoBangs", 
-                 "threeBangs", 
-                 "zeroBangs"))
+                 "BangNo",
+                 "BangYes",
+                 "OneBang",
+                 "TwoBangs", 
+                 "ThreeBangs", 
+                 "ZeroBangs"))
 
 nnResults <- neuralnet::compute(bangTrainModel, tester)
-results <- data.frame(actual = testNN$pitch_category_BR, prediction = nnResults$net.result)
+results <- data.frame(actual = testNN$BreakingBall, prediction = nnResults$net.result)
 
 results
 
