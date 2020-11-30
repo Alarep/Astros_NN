@@ -17,6 +17,7 @@ library(data.table)
 ## Starting point
 ```{r load cleanerData, include=FALSE}
 set.seed(123) # Setting the seed for consistency
+load("cleanerData.RData")
 
 # Splitting the data into appropriately sized training and test sets. For now this is split at 70% training and 30% test.
 bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.7 * nrow(bangs)))
@@ -54,6 +55,16 @@ bangTrainModel <- neuralnet(nnFormula,
                             linear.output = F,
                             #act.fct = "tanh"
                             )
+# Plotting with plot.nn from the neural net package and using rep = "best" 
+# to plot the epoch with the smallest error
+plot(bangTrainModel, rep = "best")
+```
+
+```{r}
+observed = OHBangTest$pitch_category_BR
+predictedVals <- predict(bangTrainModel, OHBangTest)
+residual = observed - predictedVals
+plot(predictedVals, residual)
 ```
 ## Citations
 https://rpubs.com/ID_Tech/S1
