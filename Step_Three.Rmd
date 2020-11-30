@@ -12,6 +12,7 @@ library(caret)
 library(neuralnet)
 library(mltools)
 library(data.table)
+library(dplyr)
 ```
 
 ## Starting point
@@ -30,8 +31,16 @@ bangTest = bangs[-bangIndex,] # Creating the testing data set
 # One-hot encoding the categorical variables
 # I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
 # OHE on numOfBangs and has_bangs
-OHBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
-OHBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
+oneHotBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
+oneHotBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
+
+# Normalizing the three columns in the already one hotted test set
+testingNormalized<-oneHotBangTest %>% mutate_at(c("final_home_runs", "final_away_runs", "inning"), ~(scale(.) %>% as.vector))
+
+# Normalizing the three columns in the already one hotted training set.
+trainingNormalized<-oneHotBangTrain %>% mutate_at(c("final_home_runs", "final_away_runs", "inning"),  ~(scale(.) %>% as.vector))
+
+boxplot(testingNormalized, las = 3)
 ```
 
 So what about size of the hidden layer(s)--how many neurons? There are some empirically-derived rules-of-thumb, of these, the most commonly relied on is 'the optimal size of the hidden layer is usually between the size of the input and size of the output layers'. Jeff Heaton, author of Introduction to Neural Networks in Java offers a few more.
@@ -47,27 +56,48 @@ The number of hidden neurons should be less than twice the size of the input lay
 nnFormula <- "pitch_category_BR + pitch_category_CH + pitch_category_FB + pitch_category_OT~."
 
 bangTrainModel <- neuralnet(nnFormula, 
-                            data = OHBangTrain, 
-                            hidden = 20,
-                            #learningrate = .5,
-                            #linear.output = FALSE,
+                            data = trainingNormalized, 
+                            hidden = 12,
                             rep = 10,
                             linear.output = F,
-                            #act.fct = "tanh"
                             )
-# Plotting with plot.nn from the neural net package and using rep = "best" 
-# to plot the epoch with the smallest error
-plot(bangTrainModel, rep = "best")
 ```
 
 ```{r}
-observed = OHBangTest$pitch_category_BR
-predictedVals <- predict(bangTrainModel, OHBangTest)
+# Plotting with plot.nn from the neural net package and using rep = "best" 
+# to plot the epoch with the smallest error
+plot(bangTrainModel, 
+     rep = "best",
+     col.entry = "royalblue",
+     col.out = "pink",
+     col.hidden = "purple",
+     )
+bangTrainModel$result.matrix[1,]
+```
+
+```{r}
+observed = testingNormalized$pitch_category_BR
+predictedVals <- predict(bangTrainModel, testingNormalized)
 residual = observed - predictedVals
 plot(predictedVals, residual)
+```
+
+```{r}
+tester <- subset(testingNormalized, select = c("final_away_runs", "final_home_runs", "inning", "pitch_type_code_CH", "pitch_type_code_CU", "pitch_type_code_EP","pitch_type_code_FC", "pitch_type_code_FF", "pitch_type_code_FS", "pitch_type_code_FT", "pitch_type_code_KC", "pitch_type_code_PO", "pitch_type_code_SI", "pitch_type_code_SL", "pitch_type_code_UN", "pitch_category_BR", "pitch_category_CH",  "pitch_category_FB", "pitch_category_OT", "has_bangs_n", "has_bangs_y", "numOfBangs_1B", "numOfBangs_2B", "numOfBangs_3B", "numOfBangs_4B", "numOfBangs_5B", "numOfBangs_0"))
+nnResults <- neuralnet::compute(bangTrainModel, tester)
+results <- data.frame(actual = testingNormalized$pitch_category_BR, prediction = nnResults$net.result)
+results
+
+roundedresults<-sapply(results,round,digits=0)
+head(roundedresults)
+roundedresultsdf=data.frame(roundedresults)
+head(roundedresultsdf)
+attach(roundedresultsdf)
+table(roundedresultsdf)
 ```
 ## Citations
 https://rpubs.com/ID_Tech/S1
 https://stackoverflow.com/questions/39126537/replace-na-in-a-factor-column
 https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
 https://www.researchgate.net/post/How-to-decide-the-number-of-hidden-layers-and-nodes-in-a-hidden-layer#:~:text=The%20number%20of%20hidden%20neurons,size%20of%20the%20input%20layer.
+https://datascienceplus.com/neuralnet-train-and-test-neural-networks-using-r/
