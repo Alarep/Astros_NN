@@ -13,11 +13,11 @@ library(neuralnet)
 library(mltools)
 library(data.table)
 library(dplyr)
+library(MLmetrics)
 ```
 
 ## Starting point
 ```{r load cleanerData, include=FALSE}
-set.seed(123) # Setting the seed for consistency
 load("cleanerData.RData")
 
 # Splitting the data into appropriately sized training and test sets. For now this is split at 70% training and 30% test.
@@ -30,17 +30,26 @@ bangTest = bangs[-bangIndex,] # Creating the testing data set
 ```{r}
 # One-hot encoding the categorical variables
 # I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
-# OHE on numOfBangs and has_bangs
 oneHotBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
 oneHotBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
+# I have opted to remove three rows that were causing issues and were not very intuitive. 
+# I removed the columns for 4 and 5 bangs as it was very rare either showed up (an occurrence of 5 bangs was present one time in the original data set). Not only did I figure this would cause issues in terms of accuracy but it was also causing issues in the normalization stage as there was not enough values to split between the testing and training sets. So when normalization occured there were not enough "positive" values to go around resulting in columns of NaN's
+oneHotBangTrain = oneHotBangTrain[,-c(12, 25:26)]
+oneHotBangTest = oneHotBangTest[,-c(12, 25:26)]
+```
 
-# Normalizing the three columns in the already one hotted test set
-testingNormalized<-oneHotBangTest %>% mutate_at(c("final_home_runs", "final_away_runs", "inning"), ~(scale(.) %>% as.vector))
+```{r}
+# Normalizing the already one hotted training set
+max = apply(oneHotBangTrain, 2, max)
+min = apply(oneHotBangTrain, 2, min)
+trainedNN = as.data.frame(scale(oneHotBangTrain, center = min, scale = max - min))
 
-# Normalizing the three columns in the already one hotted training set.
-trainingNormalized<-oneHotBangTrain %>% mutate_at(c("final_home_runs", "final_away_runs", "inning"),  ~(scale(.) %>% as.vector))
+# Normalizingthe already one hotted testing set.
+max = apply(oneHotBangTest, 2, max)
+min = apply(oneHotBangTest, 2, min)
+testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
 
-boxplot(testingNormalized, las = 3)
+boxplot(testNN[,1:3], las = 3)
 ```
 
 So what about size of the hidden layer(s)--how many neurons? There are some empirically-derived rules-of-thumb, of these, the most commonly relied on is 'the optimal size of the hidden layer is usually between the size of the input and size of the output layers'. Jeff Heaton, author of Introduction to Neural Networks in Java offers a few more.
@@ -56,7 +65,7 @@ The number of hidden neurons should be less than twice the size of the input lay
 nnFormula <- "pitch_category_BR + pitch_category_CH + pitch_category_FB + pitch_category_OT~."
 
 bangTrainModel <- neuralnet(nnFormula, 
-                            data = trainingNormalized, 
+                            data = trainedNN,
                             hidden = 12,
                             rep = 10,
                             linear.output = F,
@@ -76,16 +85,18 @@ bangTrainModel$result.matrix[1,]
 ```
 
 ```{r}
-observed = testingNormalized$pitch_category_BR
-predictedVals <- predict(bangTrainModel, testingNormalized)
+observed = testNN$pitch_category_BR
+predictedVals <- predict(bangTrainModel, testNN)
 residual = observed - predictedVals
 plot(predictedVals, residual)
 ```
 
 ```{r}
-tester <- subset(testingNormalized, select = c("final_away_runs", "final_home_runs", "inning", "pitch_type_code_CH", "pitch_type_code_CU", "pitch_type_code_EP","pitch_type_code_FC", "pitch_type_code_FF", "pitch_type_code_FS", "pitch_type_code_FT", "pitch_type_code_KC", "pitch_type_code_PO", "pitch_type_code_SI", "pitch_type_code_SL", "pitch_type_code_UN", "pitch_category_BR", "pitch_category_CH",  "pitch_category_FB", "pitch_category_OT", "has_bangs_n", "has_bangs_y", "numOfBangs_1B", "numOfBangs_2B", "numOfBangs_3B", "numOfBangs_4B", "numOfBangs_5B", "numOfBangs_0"))
+tester <- subset(testNN, select = c("final_away_runs", "final_home_runs", "inning", "pitch_type_code_CH", "pitch_type_code_CU", "pitch_type_code_EP","pitch_type_code_FC", "pitch_type_code_FF", "pitch_type_code_FS", "pitch_type_code_FT", "pitch_type_code_KC", "pitch_type_code_SI", "pitch_type_code_SL", "pitch_type_code_UN", "pitch_category_BR", "pitch_category_CH",  "pitch_category_FB", "pitch_category_OT", "has_bangs_n", "has_bangs_y", "numOfBangs_1B", "numOfBangs_2B", "numOfBangs_3B", "numOfBangs_0"))
+
 nnResults <- neuralnet::compute(bangTrainModel, tester)
-results <- data.frame(actual = testingNormalized$pitch_category_BR, prediction = nnResults$net.result)
+results <- data.frame(actual = testNN$pitch_category_BR, prediction = nnResults$net.result)
+
 results
 
 roundedresults<-sapply(results,round,digits=0)
