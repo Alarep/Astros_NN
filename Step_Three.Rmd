@@ -9,16 +9,13 @@ output: html_document
 # usual r setup block also loading appropriate packages here
 knitr::opts_chunk$set(echo = TRUE)
 library(caret)
+library(neuralnet)
 library(mltools)
 library(data.table)
 ```
 
 ## Starting point
-```{r load cleanedData, include=FALSE}
-# This block is used to define the data as well as split it into training and test sets.
-
-# Cleaned data has renamed the bangs category to numOfBangs in order to avoid confusion. numOfBangs is now a factor with five levels rather than a character value to allow one hot encoding. has_bangs subcategory has also been changed to a factor with two levels rather than a char for the same reason.
-
+```{r load cleanerData, include=FALSE}
 set.seed(123) # Setting the seed for consistency
 
 # Splitting the data into appropriately sized training and test sets. For now this is split at 70% training and 30% test.
@@ -35,5 +32,31 @@ bangTest = bangs[-bangIndex,] # Creating the testing data set
 OHBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
 OHBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
 ```
+
+So what about size of the hidden layer(s)--how many neurons? There are some empirically-derived rules-of-thumb, of these, the most commonly relied on is 'the optimal size of the hidden layer is usually between the size of the input and size of the output layers'. Jeff Heaton, author of Introduction to Neural Networks in Java offers a few more.
+
+The number of hidden neurons should be between the size of the input layer and the size of the output layer.
+The number of hidden neurons should be 2/3 the size of the input layer, plus the size of the output layer.
+The number of hidden neurons should be less than twice the size of the input layer.
+
+```{r}
+# Recent edits
+# change number of hidden nodes/layers
+
+nnFormula <- "pitch_category_BR + pitch_category_CH + pitch_category_FB + pitch_category_OT~."
+
+bangTrainModel <- neuralnet(nnFormula, 
+                            data = OHBangTrain, 
+                            hidden = 20,
+                            #learningrate = .5,
+                            #linear.output = FALSE,
+                            rep = 10,
+                            linear.output = F,
+                            #act.fct = "tanh"
+                            )
+```
 ## Citations
 https://rpubs.com/ID_Tech/S1
+https://stackoverflow.com/questions/39126537/replace-na-in-a-factor-column
+https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
+https://www.researchgate.net/post/How-to-decide-the-number-of-hidden-layers-and-nodes-in-a-hidden-layer#:~:text=The%20number%20of%20hidden%20neurons,size%20of%20the%20input%20layer.
