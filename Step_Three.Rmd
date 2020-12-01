@@ -200,6 +200,10 @@ trainedNN = as.data.frame(scale(oneHotBangTrain, center = min, scale = max - min
 max = apply(oneHotBangTest, 2, max)
 min = apply(oneHotBangTest, 2, min)
 testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
+
+# Removing a persistent column from earlier
+trainedNN = trainedNN[, -c(4)]
+testNN = trainedNN[, -c(4)]
 ```
 
 ```{r, echo=FALSE}
