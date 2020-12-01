@@ -203,7 +203,7 @@ testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
 
 # Removing a persistent column from earlier
 trainedNN = trainedNN[, -c(4)]
-testNN = trainedNN[, -c(4)]
+testNN = testNN[, -c(4)]
 ```
 
 ```{r, echo=FALSE}
@@ -276,20 +276,10 @@ plot(observedUnknownPitchType - predictedValsUnknownPitchType)
 ```
 
 ```{r}
-tester <- subset(testNN, select = c('AwayScore',
+tester <- subset(testNN, select = c(
+                 'AwayScore',
                  "HomeScore",
-                 "ChangeupPitch",
-                 "CurveballPitch",
-                 "EephusPitch",
-                 "CutterPitch",
-                 "FourSeemFastBallPitch",
-                 "SplitterPitch",
                  "inning",
-                 "TwoSeamFastBallPitch",
-                 "KnuckleCurvePitch",
-                 "SinkerPitch",
-                 "SliderPitch",
-                 "UnknownPitch",
                  "BangNo",
                  "BangYes",
                  "OneBang",
