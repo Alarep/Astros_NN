@@ -4,6 +4,15 @@ author: "Jack Perala"
 date: "11/17/2020"
 output: html_document
 ---
+```{r}
+# These are the packages that will need to be installed and loaded in order for the program to function. I have left them commented out for ease of use if any are missing on the specified environment.
+#install.packages("caret")
+#install.packages("neuralnet")
+#install.packages("mltools")
+#install.packages("data.table")
+#install.packages("dplyr")
+#install.packages("MLmetrics")
+```
 
 ```{r setup, include=FALSE}
 # usual r setup block also loading appropriate packages here
@@ -16,141 +25,192 @@ library(dplyr)
 library(MLmetrics)
 ```
 
-## Starting point
+## The Goal
+
+  The purpose of this program is to construct a neural net with the intent of accurately predicting pitches based on the occurrence of a trash can bang during Major League Baseball's 2017 Houston Astros home games. This data was graciously collected by Tony Adams (http://signstealingscandal.com/files/) and has record of every pitch thrown to the Astros at home in the 2017 season. 
+  
+## Building The Model
+ 
+  First lets get to know the data a little bit better. The cleaned up bangs data set consists of ### columns such as home and away team scores, the inning, number of bangs, and if a bang was present for the pitch. The data itself consists of two different types, integers and factors. We will need these two types for normalization and one hot encoding later on. Using the provided cleanedData.Rdata file the bangs data will be cleaned up and house the appropriate columns as well as appropriate types for the data.
+  
 ```{r load cleanerData, include=FALSE}
 load("cleanerData.RData")
+```
 
+```{r}
+head(bangs)
+```
+
+  Now that we have the data we need to split it into our training and testing sets. In this case I chose to go with 85% for training and 15% for testing. This seemed like a somewhat sensible choice as we are not working with big data by any means and some aspects of what we are trying to predict can be rare so I thought it would be best to give the model a better chance to train with a reasonably high training split. 
+<!-- Originally the data was imported as all character types. It required transforming the majority of columns with one hot encoding but because some of the factors had a handful of levels (pitch_type_code for example)and not enough input of rare occurences it was causing issues when normalizing. This is explained a little further on as well. -->
+
+```{r}
 # Splitting the data into appropriately sized training and test sets. For now this is split at 70% training and 30% test.
-bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.7 * nrow(bangs)))
+bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.85 * nrow(bangs)))
 
 bangTrain = bangs[bangIndex,] # Creating the training data set
 bangTest = bangs[-bangIndex,] # Creating the testing data set
 ```
 
+  So we have our training and test sets split up now it is time to handle the factors with one hot encoding. The majority of our data are factors with varying number of levels but all of these will require us to one hot encode them so our categorical data can give us some more useful data for the model. If we look at the data now we will see that we have quite a few new columns but now each one of the columns built from the levels of the factors consists of 1's and 0's so we have more black and white values for the presence of each level.
+  
 ```{r}
 # One-hot encoding the categorical variables
 # I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
 oneHotBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
 oneHotBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
-# I have opted to remove three rows that were causing issues and were not very intuitive. 
-# I removed the columns for 4 and 5 bangs as it was very rare either showed up (an occurrence of 5 bangs was present one time in the original data set). Not only did I figure this would cause issues in terms of accuracy but it was also causing issues in the normalization stage as there was not enough values to split between the testing and training sets. So when normalization occured there were not enough "positive" values to go around resulting in columns of NaN's
-oneHotBangTrain = oneHotBangTrain[,-c(12, 25:26)]
-oneHotBangTest = oneHotBangTest[,-c(12, 25:26)]
+
+head(oneHotBangTrain)
+head(oneHotBangTest)
 ```
+  
+  Now that we have completed the one hot encoding , although it may be difficult to see over knitting, there are very few occurrences of five bangs or four bangs, as well as various pitches. So we should remove them as when we split the data it did not guarantee that we would have a mix of values for each set , in fact there is only one occurrence of five bangs in the entire data set, so when we go to normalize the data we end up with missing values and other errors. 
+  
+  In addition now that we have split our categorical variables and have our final number of columns let us rename them for readability as right now they are explanatory but quite messy (this will not be in the knitted document to conserve space, reference the rmd file).
 
 ```{r}
-# Normalizing the already one hotted training set
+# I have opted to remove three rows that were causing issues and were not very intuitive. 
+# I removed the columns for 4 and 5 bangs as it was very rare either showed up (an occurrence of 5 bangs was present one time in the original data set). It was causing issues in the normalization stage as there was not enough values to split between the testing and training sets. So when normalization occured there were not enough "positive" values to go around resulting in columns of NaN's.
+
+# I will also be removing the original pitch type columns (not the original pitch code explanatory variables) as they are related to the explanatory variables and due to the relationship the model was suffering from auto-correlation or something similar. My error was pleasantly low but obviously this is because I was pretty much giving my model the correct answers.
+oneHotBangTrain = oneHotBangTrain[,-c(4:14, 25:26)]
+
+oneHotBangTest = oneHotBangTest[,-c(4:14, 25:26)]
+
+head(oneHotBangTrain)
+head(oneHotBangTest)
+```
+
+```{r, echo=FALSE}
+# Renaming column names in normalized training (trainedNN) for readability.
+setnames(oneHotBangTrain, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_type_code_CH',
+                 'pitch_type_code_CU',
+                 'pitch_type_code_EP',
+                 'pitch_type_code_FC',
+                 'pitch_type_code_FF',
+                 'pitch_type_code_FS',
+                 'pitch_type_code_FT',
+                 'pitch_type_code_KC',
+                 'pitch_type_code_SI',
+                 'pitch_type_code_SL',
+                 'pitch_type_code_UN',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'ChangeupPitch',
+                 'CurveballPitch',
+                 'EephusPitch',
+                 'CutterPitch',
+                 'FourSeemFastBallPitch',
+                 'SplitterPitch',
+                 'TwoSeamFastBallPitch',
+                 'KnuckleCurvePitch',
+                 'SinkerPitch',
+                 'SliderPitch',
+                 'UnknownPitch',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+
+# Renaming column names in normalized test for readability
+setnames(oneHotBangTest, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_type_code_CH',
+                 'pitch_type_code_CU',
+                 'pitch_type_code_EP',
+                 'pitch_type_code_FC',
+                 'pitch_type_code_FF',
+                 'pitch_type_code_FS',
+                 'pitch_type_code_FT',
+                 'pitch_type_code_KC',
+                 'pitch_type_code_SI',
+                 'pitch_type_code_SL',
+                 'pitch_type_code_UN',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'ChangeupPitch',
+                 'CurveballPitch',
+                 'EephusPitch',
+                 'CutterPitch',
+                 'FourSeemFastBallPitch',
+                 'SplitterPitch',
+                 'TwoSeamFastBallPitch',
+                 'KnuckleCurvePitch',
+                 'SinkerPitch',
+                 'SliderPitch',
+                 'UnknownPitch',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+```
+  
+  Now that we have handled the factors let take care of the integers more specifically the homeScore, awayScore, and inning columns. We will need to normalize the data to ensure it is in the range of -1 and 1. The model can supposedly take care of this but it would cost us training time and possibly mess up our results, so let us normalize the data to ensure we are getting what we desire.
+  
+```{r}
+# Boxplot of original values
+boxplot(oneHotBangTrain[,1:3])
+
+# Normalizing the already one hotted training set, specifically on the homeScore, awayScore, and inning columns.
 max = apply(oneHotBangTrain, 2, max)
 min = apply(oneHotBangTrain, 2, min)
 trainedNN = as.data.frame(scale(oneHotBangTrain, center = min, scale = max - min))
 
-# Normalizingthe already one hotted testing set.
+# Normalizingthe already one hotted testing set, specifically on the homeScore, awayScore, and inning columns..
 max = apply(oneHotBangTest, 2, max)
 min = apply(oneHotBangTest, 2, min)
 testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
-
-boxplot(testNN[,1:3], las = 3)
 ```
 
-```{r}
-# Renaming column names in normalized test and training sets for readability.
-# Testing set
-setnames(trainedNN, 
-         old = c('final_away_runs',
-                 'final_home_runs',
-                 'pitch_type_code_CH',
-                 'pitch_type_code_CU',
-                 'pitch_type_code_EP',
-                 'pitch_type_code_FC',
-                 'pitch_type_code_FF',
-                 'pitch_type_code_FS',
-                 'pitch_type_code_FT',
-                 'pitch_type_code_KC',
-                 'pitch_type_code_SI',
-                 'pitch_type_code_SL',
-                 'pitch_type_code_UN',
-                 'pitch_category_BR',
-                 'pitch_category_CH',
-                 'pitch_category_FB',
-                 'pitch_category_OT',
-                 'has_bangs_n', 'has_bangs_y', 'numOfBangs_1B', 'numOfBangs_2B', 'numOfBangs_3B', 'numOfBangs_0'), 
-         new = c('AwayScore',
-                 'HomeScore',
-                 'ChangeupPitch',
-                 'CurveballPitch',
-                 'EephusPitch',
-                 'CutterPitch',
-                 'FourSeemFastBallPitch',
-                 'SplitterPitch',
-                 'TwoSeamFastBallPitch',
-                 'KnuckleCurvePitch',
-                 'SinkerPitch',
-                 'SliderPitch',
-                 'UnknownPitch',
-                 'BreakingBall',
-                 'Changeup',
-                 'FastBall',
-                 'UnknownPitchType',
-                 'BangNo',
-                 'BangYes',
-                 'OneBang',
-                 'TwoBangs', 
-                 'ThreeBangs', 
-                 'ZeroBangs'),
-         skip_absent = TRUE
-         )
-
-setnames(testNN, 
-         old = c('final_away_runs',
-                 'final_home_runs',
-                 'pitch_type_code_CH',
-                 'pitch_type_code_CU',
-                 'pitch_type_code_EP',
-                 'pitch_type_code_FC',
-                 'pitch_type_code_FF',
-                 'pitch_type_code_FS',
-                 'pitch_type_code_FT',
-                 'pitch_type_code_KC',
-                 'pitch_type_code_SI',
-                 'pitch_type_code_SL',
-                 'pitch_type_code_UN',
-                 'pitch_category_BR',
-                 'pitch_category_CH',
-                 'pitch_category_FB',
-                 'pitch_category_OT',
-                 'has_bangs_n', 'has_bangs_y', 'numOfBangs_1B', 'numOfBangs_2B', 'numOfBangs_3B', 'numOfBangs_0'), 
-         new = c('AwayScore',
-                 'HomeScore',
-                 'ChangeupPitch',
-                 'CurveballPitch',
-                 'EephusPitch',
-                 'CutterPitch',
-                 'FourSeemFastBallPitch',
-                 'SplitterPitch',
-                 'TwoSeamFastBallPitch',
-                 'KnuckleCurvePitch',
-                 'SinkerPitch',
-                 'SliderPitch',
-                 'UnknownPitch',
-                 'BreakingBall',
-                 'Changeup',
-                 'FastBall',
-                 'UnknownPitchType',
-                 'BangNo',
-                 'BangYes',
-                 'OneBang',
-                 'TwoBangs', 
-                 'ThreeBangs', 
-                 'ZeroBangs'),
-         skip_absent = TRUE
-         )
+```{r, echo=FALSE}
+# Boxplot of the newly normalized data in the testNN set.
+boxplot(trainedNN[,1:3], las = 3)
 ```
 
-So what about size of the hidden layer(s)--how many neurons? There are some empirically-derived rules-of-thumb, of these, the most commonly relied on is 'the optimal size of the hidden layer is usually between the size of the input and size of the output layers'. Jeff Heaton, author of Introduction to Neural Networks in Java offers a few more.
+  That looks pretty good, we have effectively scaled down the data in the first three columns which were all integers to be in the desired range.
 
-The number of hidden neurons should be between the size of the input layer and the size of the output layer.
-The number of hidden neurons should be 2/3 the size of the input layer, plus the size of the output layer.
-The number of hidden neurons should be less than twice the size of the input layer.
+
+  Excellent, all of our data has been properly transformed and set up to be built into neural net model using the neuralnet package from R. First we need to identify what we need to identify our formula, since I am trying to predict the category of pitch thrown I have chosen the four major categories of pitches defined by the MLB. These are change-ups, fast-balls, curve-balls, and unknown types. We will use the transformed testing from earlier for the data field in the model. For the hidden nodes I looked for some community input to try gauge an appropriate way to estimate how many hidden nodes would be helpful. I found from sources with varying ideas, but the most general rule was that the number of hidden nodes should be between the number of input and output nodes. I have ten independent variables and four dependent variables, so in the end I opted to use 6 hidden nodes . For the model to function it required changing the default threshold which ended up being a process of trial and error. When the threshold is at the default 0.01 the model throws an error about an array with size than zero. Initially I bumped it up to 0.3 to shoot a bit high and work back down and at it's best this was returning an error rate around 1780. Eventually I worked my way back down to a threshold of 0.02 which did reduce the error by about 100 but the error rate is still quite high. The model usually takes around ### steps to complete and over this time the threshold works it's way down to just a bit over 0.02 (this can be seen by uncommenting the lifesign field in nnFormula)
 
 ```{r}
 # Recent edits
@@ -158,10 +218,20 @@ The number of hidden neurons should be less than twice the size of the input lay
 
 nnFormula <- "BreakingBall + Changeup + FastBall + UnknownPitchType~."
 
-bangTrainModel <- neuralnet(nnFormula, 
+bangTrainModel <- neuralnet(
+                            nnFormula,
+                            
+                            # Using the trainedNN data set with normalization and one hot encoding
                             data = trainedNN,
-                            hidden = 12,
-                            rep = 10,
+                            
+                            hidden = 6, # Running with 6 hidden nodes
+                            
+                            rep = 10, # Running with 10 epochs
+                            
+                            # Changing the threshold to deal with an error I was receiving that I had an array less than 0 in the model. I looked for solutions to this online but nothing really fit my situation except for some people mentioning there was something broken in the package that required downloading the package directly from gitHub.The model was also not converging correctly, my thinking is that the data is so flat that it is taking a significant number of steps as well as a little leeway in the threshold to find anything the model is satisfied with.
+                            threshold = .22, 
+                            lifesign = "full",
+                            
                             linear.output = F,
                             )
 ```
@@ -179,10 +249,26 @@ bangTrainModel$result.matrix[1,]
 ```
 
 ```{r}
-observed = testNN$BreakingBall
-predictedVals <- predict(bangTrainModel, testNN)
-residual = observed - predictedVals
-plot(predictedVals, residual)
+observedBB = testNN$BreakingBall
+predictedValsBB <- predict(bangTrainModel, testNN)
+residualBB = observedBB - predictedValsBB
+plot(predictedValsBB, residualBB)
+
+observedFB = testNN$FastBall
+predictedValsFB = predict(bangTrainModel, testNN)
+residualFB = observedFB - predictedValsFB
+plot(observedFB - predictedValsFB)
+
+observedCH = testNN$Changeup
+predictedValsCH = predict(bangTrainModel, testNN)
+residualCH = observedCH - predictedValsCH
+residualCH
+plot(observedCH - predictedValsCH)
+
+observedUnknownPitchType = testNN$UnknownPitchType
+predictedValsUnknownPitchType = predict(bangTrainModel, testNN)
+residualUnknownPitchType = observedUnknownPitchType - predictedValsUnknownPitchType
+plot(observedUnknownPitchType - predictedValsUnknownPitchType)
 ```
 
 ```{r}
