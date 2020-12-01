@@ -189,7 +189,7 @@ setnames(oneHotBangTest,
   
 ```{r}
 # Boxplot of original values
-boxplot(oneHotBangTrain[,1:3])
+boxplot(oneHotBangTrain[,1:3], main = "Plot of integer value columns", sub = "Before normalization")
 
 # Normalizing the already one hotted training set, specifically on the homeScore, awayScore, and inning columns.
 max = apply(oneHotBangTrain, 2, max)
@@ -204,11 +204,13 @@ testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
 # Removing a persistent column from earlier
 trainedNN = trainedNN[, -c(4)]
 testNN = testNN[, -c(4)]
+trainedNN = trainedNN[, -c(7)]
+testNN = testNN[, -c(7)]
 ```
 
 ```{r, echo=FALSE}
 # Boxplot of the newly normalized data in the testNN set.
-boxplot(trainedNN[,1:3], las = 3)
+boxplot(trainedNN[,1:3], main = "Plot of integer value columns", sub = "After normalization")
 ```
 
   That looks pretty good, we have effectively scaled down the data in the first three columns which were all integers to be in the desired range.
@@ -220,7 +222,7 @@ boxplot(trainedNN[,1:3], las = 3)
 # Recent edits
 # change number of hidden nodes/layers
 
-nnFormula <- "BreakingBall + Changeup + FastBall + UnknownPitchType~."
+nnFormula <- "BreakingBall + Changeup + FastBall~."
 
 bangTrainModel <- neuralnet(
                             nnFormula,
@@ -228,12 +230,12 @@ bangTrainModel <- neuralnet(
                             # Using the trainedNN data set with normalization and one hot encoding
                             data = trainedNN,
                             
-                            hidden = 6, # Running with 6 hidden nodes
+                            hidden = c(6), # Running with 6 hidden nodes
                             
                             rep = 10, # Running with 10 epochs
                             
                             # Changing the threshold to deal with an error I was receiving that I had an array less than 0 in the model. I looked for solutions to this online but nothing really fit my situation except for some people mentioning there was something broken in the package that required downloading the package directly from gitHub.The model was also not converging correctly, my thinking is that the data is so flat that it is taking a significant number of steps as well as a little leeway in the threshold to find anything the model is satisfied with.
-                            threshold = .22, 
+                            threshold = .1, 
                             lifesign = "full",
                             
                             linear.output = F,
@@ -253,26 +255,21 @@ bangTrainModel$result.matrix[1,]
 ```
 
 ```{r}
+par(mfrow(2,2))
 observedBB = testNN$BreakingBall
 predictedValsBB <- predict(bangTrainModel, testNN)
 residualBB = observedBB - predictedValsBB
-plot(predictedValsBB, residualBB)
+plot(predictedValsBB, residualBB, main = "Residual plot of breaking balls", xlab = "Predicted", ylab = "Observed")
 
 observedFB = testNN$FastBall
 predictedValsFB = predict(bangTrainModel, testNN)
 residualFB = observedFB - predictedValsFB
-plot(observedFB - predictedValsFB)
+plot(observedFB - predictedValsFB,main = "Residual plot of fast balls", xlab = "Predicted", ylab = "Observed")
 
 observedCH = testNN$Changeup
 predictedValsCH = predict(bangTrainModel, testNN)
 residualCH = observedCH - predictedValsCH
-residualCH
-plot(observedCH - predictedValsCH)
-
-observedUnknownPitchType = testNN$UnknownPitchType
-predictedValsUnknownPitchType = predict(bangTrainModel, testNN)
-residualUnknownPitchType = observedUnknownPitchType - predictedValsUnknownPitchType
-plot(observedUnknownPitchType - predictedValsUnknownPitchType)
+plot(observedCH - predictedValsCH, main = "Residual plot of change-ups", xlab = "Predicted", ylab = "Observed")
 ```
 
 ```{r}
@@ -290,12 +287,12 @@ tester <- subset(testNN, select = c(
 nnResults <- neuralnet::compute(bangTrainModel, tester)
 results <- data.frame(actual = testNN$BreakingBall, prediction = nnResults$net.result)
 
-results
+#results
 
 roundedresults<-sapply(results,round,digits=0)
-head(roundedresults)
+#head(roundedresults)
 roundedresultsdf=data.frame(roundedresults)
-head(roundedresultsdf)
+#head(roundedresultsdf)
 attach(roundedresultsdf)
 table(roundedresultsdf)
 ```
@@ -305,3 +302,5 @@ https://stackoverflow.com/questions/39126537/replace-na-in-a-factor-column
 https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
 https://www.researchgate.net/post/How-to-decide-the-number-of-hidden-layers-and-nodes-in-a-hidden-layer#:~:text=The%20number%20of%20hidden%20neurons,size%20of%20the%20input%20layer.
 https://datascienceplus.com/neuralnet-train-and-test-neural-networks-using-r/
+https://www.datamentor.io/r-programming/subplot/
+https://ecommons.cornell.edu/bitstream/handle/1813/33060/BU-945-M.pdf?sequence=1&isAllowed=y
