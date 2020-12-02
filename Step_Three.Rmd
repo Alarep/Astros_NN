@@ -12,6 +12,8 @@ output: html_document
 #install.packages("data.table")
 #install.packages("dplyr")
 #install.packages("MLmetrics")
+#install.packages("Metrics")
+#install.packages("RcmdrPlugin.survival")
 ```
 
 ```{r setup, include=FALSE}
@@ -25,6 +27,7 @@ library(dplyr)
 library(MLmetrics)
 library(graphics)
 library(RcmdrPlugin.survival)
+library(Metrics)
 ```
 
 ## The Goal
@@ -33,9 +36,9 @@ library(RcmdrPlugin.survival)
   
 ## Building The Model
  
-  First lets get to know the data a little bit better. The cleaned up bangs data set consists of 6 columns such as home and away team scores, the inning, number of bangs, and if a bang was present for the pitch. The data itself consists of two different types, integers and factors. We will need these two types for normalization and one hot encoding later on. Using the provided cleanedData.Rdata file the bangs data will be cleaned up and house the appropriate columns as well as appropriate types for the data.
+  First lets get to know the data a little bit better. The cleaned up bangs data set consists of 6 columns such as home and away team scores, the inning, number of bangs, and if a bang was present for the pitch. The data itself consists of two different types, integers and factors. We will need these two types for normalization and one hot encoding later on. Using the provided cleanerData.Rdata file the bangs data will be cleaned up and house the appropriate columns as well as appropriate types for the data.
   
-```{r load cleanerData, include=FALSE}
+```{r load cleanerdData, include=FALSE}
 load("cleanerData.RData")
 ```
 
@@ -193,7 +196,7 @@ bangTrainModel <- neuralnet(
                             # Changing the threshold to deal with an error I was receiving that I had an array less than 0 in the model. I looked for solutions to this online but nothing really fit my situation except for some people mentioning there was something broken in the package that required downloading the package directly from gitHub.The model was also not converging correctly, my thinking is that the data is so flat that it is taking a significant number of steps as well as a little leeway in the threshold to find anything the model is satisfied with.
                             threshold = .03, 
                             
-                            lifesign = "full",
+                            #lifesign = "full",
                             
                             linear.output = F,
                             )
@@ -298,8 +301,40 @@ roundedresultsdf=data.frame(roundedresults)
 attach(roundedresultsdf)
 table(roundedresultsdf)
 ```
-  These do not seem to paint a very nice picture of how well we are predicting the data. We can see that we have a reasonable number of false-negatives and false-positives. Some sets can even do an a very poor job of prediction ending up with all false positives rather than true positives.
-  
+  These do not seem to paint a very nice picture of how well we are predicting the data. We can see that we have a reasonable number of false-negatives and false-positives. Some sets can even do a very poor job of prediction ending up with all false positives rather than true positives. Let us look at some different metrics, how about we look at the root mean squared error, mean absolute error, and the prediction error rate.
+
+```{r}
+# Metrics for breaking balls
+data.frame(
+  RMSE = RMSE(predictedValsBB, testNN$BreakingBall),
+  MAE = MAE(predictedValsBB, testNN$BreakingBall)
+  )
+
+RMSE(predictedValsBB, testNN$BreakingBall)/mean(testNN$BreakingBall)
+```
+```{r}
+# Metrics for breaking balls
+data.frame(
+  RMSE = RMSE(predictedValsFB, testNN$BreakingBall),
+  MAE = MAE(predictedValsFB, testNN$BreakingBall)
+  )
+
+RMSE(predictedValsFB, testNN$BreakingBall)/mean(testNN$BreakingBall)
+```
+
+```{r}
+# Metrics for breaking balls
+data.frame(
+  RMSE = RMSE(predictedValsCH, testNN$BreakingBall),
+  MAE = MAE(predictedValsCH, testNN$BreakingBall)
+  )
+
+RMSE(predictedValsCH, testNN$BreakingBall)/mean(testNN$BreakingBall)
+```
+So our RMSE values are resonably low but our error prediction rate is definitely higher than desirable.
+
+
+
 ## Closing Statements
 While it is clear from other contributors in the investigation of the Houston Astros that they did in fact break the rules by stealing pitches the data provided does not seem to be able to accurately predict what type of pitch was thrown. It does however seem to make some connections as we can tell by our similar plots for the observed and predicted values of off-speed pitches. Perhaps this model can be more finely tuned or benefit from a more advanced technique. There were some comprimises made in the modeling process due to the data being used, perhaps adding only the most common batters for the team would help give some guidance.
 
