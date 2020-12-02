@@ -1,0 +1,161 @@
+---
+title: "Intermediate Data Science Project Step One"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+
+#### What Do You Plan to Do?
+Create a neural net to predict what the what pitch was truly thrown based on the occurrence (or lack there of) of a bang.
+
+#### What Do You Hope to Understand?
+To see how accurate the model can predict what type of pitch is thrown based on the occurrence of a bang by utilizing a neural net.
+
+#### Why Are You Interested in This Topic?
+I have always appreciated baseball, both the game as well as the statistics involved. This project is a good follow-up to a previous project looking at the extent and outcomes of the Astros scandal. While I do not plan to work with sabremetrics in the athletic industry I still find the data interesting.
+
+
+## The Data
+
+#### What Is the Data?
+The data is a list of every pitch thrown at an Astros home game. It includes the opposing team, inning (including if it was the top or bottom of the inning), the name of the batter, what type of pitch was thrown, and if a bang was present for the pitch.
+
+#### How Was It Collected?
+The data was collected a man named Tony Adams in November 2019. He pulled the pitch data from Major League Baseball's Statcast service which included a timestamp for the pitches. He then went back to grab youtube clips and create a spectogram to be as thorough as possible.
+
+#### Who Collected It?
+The person who collected the data is named Tony Adams. He did take some data from the MLB Statcast then hosted the data on signstealingscandal.com.
+
+
+## Structure Of the Data
+
+#### What Are The Variables Called
+* game_date
+* opponent
+* inning
+* top_bottom
+* batter
+* at_bat_event
+* pitch_type_code
+* pitch_category
+* has_bangs
+* bangs
+* call_code
+* description
+
+#### What Do The Variables Mean
+* game_date
+  + The date the game was played.
+* opponent
+  + A three letter code for what team the Astros were playing.
+* inning
+  + What inning the pitch happened.
+* top_bottom
+  + If the pitch happened in the top or bottom of the inning.
+* batter
+  + The name of the batter seeing the pitch.
+* at_bat_event
+  + The outcome of the at-bat (strikeout, homerun, etc.).
+* pitch_type_code
+  + A more specific type of pitch, such as how a knuckle-curve would be 
+  classified as an off-speed pitch.
+* pitch_category
+  + The classification of the pitch thrown. Following from the example above
+  a knuckle-curve or four-seam fastball would fall under different categories.
+  + **DISCLAIMER:** The category labels in the data set do not seem to match up
+  well with the MLB's "Pitch Types" article 
+  (http://m.mlb.com/glossary/pitch-types). I feel this data will be removed 
+  later as it would be best to stick to more specific pitch types.
+* has_bangs
+  + A character ("y" or "n") to signify a bang was present for the pitch.
+* bangs
+  + The number of bangs present for the pitch.
+* call_code
+  + The outcome of the pitch (ball, strike, foul, etc.).
+* description
+  + A description of the what the abbreviation for the call_code means
+
+#### What Are The Types of Variables
+* game_date
+  + character
+* opponent
+  + character
+* inning
+  + integer
+* top_bottom
+  + character
+* batter
+  + character
+* at_bat_event
+  + character
+* pitch_type_code
+  + character
+* pitch_category
+  + character
+* has_bangs
+  + character
+* bangs
+  + character
+  + This seems like it should be an integer but the creator chose to use the system of a number followed by the letter "B" to signify how many bangs were present.
+* call_code
+  + character
+* description
+  + character
+  
+#### Are There Any NA's Present?
+There are an abundance of NA values in the bangs column. This is expected as there are not as many bangs as there are pitches by quite some margin.
+
+#### Are There Any Coding Issues?
+There does not appear to be any issues other than possibly the number of bangs is currently a character type.
+
+#### How Much Data is There?
+There are eight columns, each with 8,274 rows of data. 
+
+
+## How Did I Get The Data?
+I obtained the data from signstealingscandal.com. The site has a convenient link to download a csv file.
+
+
+## Outline of Steps to Access and Download the Data
+
+#### How the Data Was Imported to R
+* Go to signstealingscandal.com.
+* Navigate to the "Data Files" tab.
+* Download the csv file.
+* Import into R using the import dataset dropdown in the Environment quadrant.
+* Use the read.csv method in R to read in the data and assign it the bangs variable.
+
+#### Neccessary Steps to Get the Data Into An Appropriate Form
+For now the data is an appropriate form after reading in the data. In the future the data will need to be manipulated more when certain concepts are learned such as one hot encoding.
+
+#### Possible Pitfalls
+The data seems straightforward but a potential downfall is not quite having enough data to feed the neural net.
+
+#### Trimmed Data
+* game_id
+* game_pk
+* final_away_runs
+* final_home_runs
+* on_1b
+* on_2b
+* on_3b
+* youtube_id
+* pitch_youtube_seconds
+* youtube_url
+* pitch_datetime
+* game_pitch_id
+* event_number
+* pitch_playid
+* atbat_playid
+* away_team_id
+* home_team_id
+
+#### Other Details For Importing the Data
+When using the read.csv command it changes all NA values in the bangs column to "". To rectify this I added a parameter when reading in the csv which I found from https://stackoverflow.com/questions/13822801/whats-the-best-way-to-replace-missing-values-with-na-when-reading-in-a-csv.
+```{r, echo=FALSE}
+bangs <- read.csv(file = "astros_bangs_20200127.csv", header = TRUE, sep = ",", dec = ".", na.strings = c(""))
+```

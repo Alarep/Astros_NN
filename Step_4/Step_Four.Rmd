@@ -1,0 +1,516 @@
+---
+title: "Step_4"
+author: "Jack Perala"
+date: "11/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE}
+
+# Loading appropriate packages
+library(caret)
+library(neuralnet)
+library(mltools)
+library(data.table)
+library(dplyr)
+library(MLmetrics)
+library(graphics)
+library(RcmdrPlugin.survival)
+library(Metrics)
+```
+
+```{r load finalData, include=FALSE}
+# Loading the environment
+load("finalData.RData")
+```
+DISLCAIMER: In order to knit the document it is necessary to uncomment the two code blocks below (handling one hot etc. and the neural net model). Without running the neural net the appropriate columns are not cut and it results in a model with the residual variables in the input nodes (big no-no).
+```{r, echo=FALSE}
+
+bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.85 * nrow(bangs)))
+
+bangTrain = bangs[bangIndex,] # Creating the training data set
+bangTest = bangs[-bangIndex,] # Creating the testing data set
+
+# One-hot encoding the categorical variables
+# I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
+oneHotBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
+oneHotBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
+
+# I have opted to remove three rows that were causing issues and were not very intuitive. 
+# I removed the columns for 4 and 5 bangs as it was very rare either showed up (an occurrence of 5 bangs was present one time in the original data set). It was causing issues in the normalization stage as there was not enough values to split between the testing and training sets. So when normalization occured there were not enough "positive" values to go around resulting in columns of NaN's.
+
+# I will also be removing the original pitch type columns (not the original pitch code explanatory variables) as they are related to the explanatory variables and due to the relationship the model was suffering from auto-correlation or something similar. My error was pleasantly low but obviously this is because I was pretty much giving my model the correct answers.
+oneHotBangTrain = oneHotBangTrain[,-c(4:14, 25:26)]
+
+oneHotBangTest = oneHotBangTest[,-c(4:14, 25:26)]
+
+# Renaming column names in normalized training (trainedNN) for readability.
+setnames(oneHotBangTrain, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+
+# Renaming column names in normalized test for readability
+setnames(oneHotBangTest, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+```
+## Project Overview
+The purpose of this program is to construct a neural net with the intent of predicting pitches based on the occurrence of a trash can bang during Major League Baseball's 2017 Houston Astros home games. We will see that the model constructed does not quite satisfy my hopes but does have some interesting correlations. Perhaps the model could benefit from some tweaking or perhaps a more advanced technique but there were some compromises made in order to make the data more neat. One idea was adding the most popular batters for the Astros in a one hot format to the data sets. From a previous project as well as more professional finding it is clear that some players received more bangs than others. Another thought was to tweak the model itself further and attempt to get the threshold back to as low as possible, possibly by upping the default stepmax in the neuralnet function.
+
+## The Data
+The data used in this project was graciously collected by Tony Adams (http://signstealingscandal.com/files/) and made available in csv format for the public. Much of the data set was cut for this project but the original data included data such as youtube links and timestamps for when the bangs occured. The website also explains how this data was verified via a stereograph. So while it is not considered big data by any means it is certainly well researched. The data also contains the important aspects we are focused on such as home and away team scores, how many bangs occur for a pitch, or if a bang occurred at all. 
+
+The csv file can be easily read in with the import dataset option in the environment tab in the upper right quadrant of R Studio. If we use the cleanerData.RData file included with the project we will be able to access the cleaned up bangs dataset.
+
+
+## Data Wrangling and Techniques
+
+All relevant code is available in the appendix section.
+
+
+Originally most of the data was in character format and needed to be changed to help feed the model. In the end I ended up with two types of data; integers and factors. Cleaning the data set required two techniques, one hot encoding and normalization. In order to one hot encode the appropriate data I first had to transform the character value columns into factors with varying amounts of levels.
+
+Now that the data is in factor form I was able to split the data into test and training sets as well as one hot encode the data into 0's and 1's for each level. After the one hot process I now had the final number of columns for the data set so I renamed all of them to be more explanatory and cleanly named.
+
+Next I had to normalize the three remaining integer columns, the home score, away score, and the inning. These values had different ranges but typically they range between zero and twelve. After normalization all of the values for these columns ranged between zero and one and were appropriate for the model.
+
+```{r, echo=FALSE}
+# Normalizing the already one hotted training set, specifically on the homeScore, awayScore, and inning columns.
+max = apply(oneHotBangTrain, 2, max)
+min = apply(oneHotBangTrain, 2, min)
+trainedNN = as.data.frame(scale(oneHotBangTrain, center = min, scale = max - min))
+
+# Normalizingthe already one hotted testing set, specifically on the homeScore, awayScore, and inning columns..
+max = apply(oneHotBangTest, 2, max)
+min = apply(oneHotBangTest, 2, min)
+testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
+
+# Removing a persistent column from earlier
+trainedNN = trainedNN[, -c(4)]
+testNN = testNN[, -c(4)]
+trainedNN = trainedNN[, -c(7)]
+testNN = testNN[, -c(7)]
+
+# Boxplot of the newly normalized data in the testNN set.
+boxplot(trainedNN[,1:3], main = "Plot of integer value columns", sub = "After normalization")
+```
+
+Now that the data is in the appropriate format with the applied transformations it is time to build the model. The independent variables are breaking balls, fast balls, and change-ups. Our response variable or dependent variables are the remaining categories in the data set; home and away scores, inning, number of bangs, and if a bang was present. In this case I am using six hidden nodes with a threshold of 0.03.
+
+```{r, echo=FALSE}
+
+# Constructing the model
+nnFormula <- "BreakingBall + Changeup + FastBall~."
+
+bangTrainModel <- neuralnet(
+                            nnFormula,
+                            
+                            # Using the trainedNN data set with normalization and one hot encoding
+                            data = trainedNN,
+                            
+                            hidden = c(6), # Running with 6 hidden nodes
+                            
+                            rep = 10, # Running with 10 epochs
+                            
+                            # Changing the threshold to deal with an error I was receiving that I had an array less than 0 in the model. I looked for solutions to this online but nothing really fit my situation except for some people mentioning there was something broken in the package that required downloading the package directly from gitHub.The model was also not converging correctly, my thinking is that the data is so flat that it is taking a significant number of steps as well as a little leeway in the threshold to find anything the model is satisfied with.
+                            threshold = .03, 
+                            
+                            #lifesign = "full",
+                            
+                            linear.output = F,
+                            )
+```
+
+```{r, echo=FALSE}
+# Plotting with plot.nn from the neural net package and using rep = "best" 
+# to plot the epoch with the smallest error
+plot(bangTrainModel, 
+     rep = "best",
+     col.entry = "royalblue",
+     col.out = "pink",
+     col.hidden = "purple",
+     )
+```
+
+Over the ten epochs the model runs the average error for each epoch is usually very close to 1,700.
+
+In order to test the model and examine the algorithm I looked at a variety of metrics such as plots on observed vs. predicted for the variables, mean squared error, confusion matrices, root mean squared error, and the prediction error rate from the cross validation on my testing data. Let us first look at the plots.
+
+
+```{r, echo = FALSE}
+observedBB = testNN$BreakingBall
+predictedValsBB <- predict(bangTrainModel, testNN)
+residualBB = observedBB - predictedValsBB
+
+observedFB = testNN$FastBall
+predictedValsFB = predict(bangTrainModel, testNN)
+residualFB = observedFB - predictedValsFB
+
+
+observedCH = testNN$Changeup
+predictedValsCH = predict(bangTrainModel, testNN)
+residualCH = observedCH - predictedValsCH
+
+
+par(mfrow = c(2,2))
+
+plot(observedBB - predictedValsBB, main = "Breaking balls", xlab = "Predicted", ylab = "Observed")
+
+plot(observedFB - predictedValsFB,main = "Fast balls", xlab = "Predicted", ylab = "Observed")
+
+plot(observedCH - predictedValsCH, main = "Change-ups", xlab = "Predicted", ylab = "Observed")
+
+```
+
+
+Looking at the plots we will see that for some reason or another all of the relationships in pitches have similar patterns for the plots. I expected there to be a similar relationship between change-ups and curve balls. Both plots share the same pattern which is to be expected given that they are both considered off-speed pitches and evidence has shown that the Astros used the trash can banging method to signal these off-speed pitches. Next up is fast balls, this plot is nearly identical to the other two pitch categories. Possibly this could be because there is not enough data or the algorithm is not fine tuned enough to distinguish much beyond the three pitches. This could also explain why the error rate is so abysmal.
+
+
+```{r, echo = FALSE}
+fittedBB = predictedValsBB
+residualBB = observedBB - fittedBB
+
+fittedFB = predictedValsFB
+residualFB = observedFB - fittedFB
+
+fittedCH = predictedValsCH
+residualCH = observedCH - fittedCH
+
+
+par(mfrow = c(2,2))
+plot(fittedBB, residualBB, main = "Residual plot of breaking balls", xlab = "Fitted", ylab = "Residual")
+plot(fittedFB, residualFB, main = "Residual plot of fast balls", xlab = "Fitted", ylab = "Residual")
+plot(fittedCH, residualCH, main = "Residual plot of change-ups", xlab = "Fitted", ylab = "Residual")
+```
+
+Unsurprisingly these plots are nearly identical as well. They share very similar pattern formations as well as distributions. This could possibly re-inforce the idea that the model is not fine tuned enough to accurately predict the pitch categories based off of the information provided. Maybe some confusion matrices will help.
+
+```{r, echo = FALSE}
+tester <- subset(testNN, select = c(
+                 'AwayScore',
+                 "HomeScore",
+                 "inning",
+                 "BangNo",
+                 "BangYes",
+                 "OneBang",
+                 "TwoBangs", 
+                 "ThreeBangs", 
+                 "ZeroBangs"))
+
+nnResults <- neuralnet::compute(bangTrainModel, tester)
+results <- data.frame(actual = testNN$BreakingBall, prediction = nnResults$net.result)
+
+#results
+
+roundedresults<-sapply(results,round,digits=0)
+roundedresultsdf=data.frame(roundedresults)
+attach(roundedresultsdf)
+table(roundedresultsdf)
+```
+  
+    
+  These do not seem to paint a very nice picture of how well we are predicting the data. We can see that we have a reasonable number of false-negatives and false-positives. Some sets can even do a very poor job of prediction ending up with all false positives rather than true positives. It almost seems that the model is simply making it's best guesses and that could explain the variance in confusion matrices as well as the high error rate. 
+  
+  Let us look at some different metrics, how about we look at the root mean squared error, mean absolute error, and the prediction error rate.
+  
+Metrics for breaking balls.
+  
+```{r, echo=FALSE}
+# Metrics for breaking balls
+data.frame(
+  RMSE = RMSE(predictedValsBB, testNN$BreakingBall),
+  MAE = MAE(predictedValsBB, testNN$BreakingBall)
+  )
+```
+
+
+Metrics for fast balls.
+
+```{r, echo=FALSE}
+# Metrics for fast balls
+data.frame(
+  RMSE = RMSE(predictedValsFB, testNN$FastBall),
+  MAE = MAE(predictedValsFB, testNN$FastBall)
+  )
+```
+
+Metrics for change-ups
+
+```{r, echo=FALSE}
+# Metrics for change-ups
+data.frame(
+  RMSE = RMSE(predictedValsCH, testNN$Changeup),
+  MAE = MAE(predictedValsCH, testNN$Changeup)
+  )
+```
+
+Predicted error rates for the three pitch categories. (breaking balls, fast balls, and change-ups respectively)
+
+```{r, echo=FALSE}
+RMSE(predictedValsBB, testNN$BreakingBall)/mean(testNN$BreakingBall)
+RMSE(predictedValsFB, testNN$FastBall)/mean(testNN$FastBall)
+RMSE(predictedValsCH, testNN$Changeup)/mean(testNN$Changeup)
+```
+
+So our RMSE values are reasonably low but our error prediction rate is definitely higher than desirable.
+
+## Results
+
+While it is clear from other contributors in the investigation of the Houston Astros that they did in fact break the rules by stealing pitches the data provided does not seem to be able to accurately predict what category of pitch was thrown based on the information given. It does however seem to make some connections as we can tell by our similar plots for the observed and predicted values of off-speed pitches. Perhaps this model can be more finely tuned or benefit from a more advanced technique. There were some comprimises made in the modeling process due to the data being used, perhaps adding only the most common batters for the team would help give some guidance.
+
+## Appendix
+
+All necessary code to run the program is here but is currently set not to run for knitting.
+```{r, eval=FALSE}
+# Changing the character categories into factors for one hot encoding
+# These variable types were permanently changed in a previous step.
+
+#bangs$pitch_category = as.factor(bangs$pitch_category)
+
+#bangs$has_bangs = as.factor(bangs$has_bangs)
+
+#bangs$numOfBangs = as.factor(bangs$numOfBangs)
+
+# Splitting the data into test and training sets
+bangIndex = sample(seq_len(nrow(bangs)), size = floor(0.85 * nrow(bangs)))
+
+bangTrain = bangs[bangIndex,] # Creating the training data set
+bangTest = bangs[-bangIndex,] # Creating the testing data set
+
+# One-hot encoding the categorical variables
+# I am applying the OHE to the testing and training sets separately to preserve individuality although they are receiving the same transformation.
+oneHotBangTrain = one_hot(as.data.table(bangTrain), naCols = TRUE)
+oneHotBangTest = one_hot(as.data.table(bangTest), naCols = TRUE)
+
+# I have opted to remove three rows that were causing issues and were not very intuitive. 
+# I removed the columns for 4 and 5 bangs as it was very rare either showed up (an occurrence of 5 bangs was present one time in the original data set). It was causing issues in the normalization stage as there was not enough values to split between the testing and training sets. So when normalization occured there were not enough "positive" values to go around resulting in columns of NaN's.
+
+# I will also be removing the original pitch type columns (not the original pitch code explanatory variables) as they are related to the explanatory variables and due to the relationship the model was suffering from auto-correlation or something similar. My error was pleasantly low but obviously this is because I was pretty much giving my model the correct answers.
+oneHotBangTrain = oneHotBangTrain[,-c(4:14, 25:26)]
+
+oneHotBangTest = oneHotBangTest[,-c(4:14, 25:26)]
+
+# Renaming column names in normalized training (trainedNN) for readability.
+setnames(oneHotBangTrain, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+
+# Renaming column names in normalized test for readability
+setnames(oneHotBangTest, 
+         old = c('final_away_runs',
+                 'final_home_runs',
+                 'pitch_category_BR',
+                 'pitch_category_CH',
+                 'pitch_category_FB',
+                 'pitch_category_OT',
+                 'has_bangs_n', 
+                 'has_bangs_y', 
+                 'numOfBangs_1B', 
+                 'numOfBangs_2B', 
+                 'numOfBangs_3B', 
+                 'numOfBangs_0'), 
+         new = c('AwayScore',
+                 'HomeScore',
+                 'BreakingBall',
+                 'Changeup',
+                 'FastBall',
+                 'UnknownPitchType',
+                 'BangNo',
+                 'BangYes',
+                 'OneBang',
+                 'TwoBangs', 
+                 'ThreeBangs', 
+                 'ZeroBangs'),
+         skip_absent = TRUE
+         )
+
+# Normalizing the already one hotted training set, specifically on the homeScore, awayScore, and inning columns.
+max = apply(oneHotBangTrain, 2, max)
+min = apply(oneHotBangTrain, 2, min)
+trainedNN = as.data.frame(scale(oneHotBangTrain, center = min, scale = max - min))
+
+# Normalizingthe already one hotted testing set, specifically on the homeScore, awayScore, and inning columns..
+max = apply(oneHotBangTest, 2, max)
+min = apply(oneHotBangTest, 2, min)
+testNN = as.data.frame(scale(oneHotBangTest, center = min, scale = max - min))
+
+# Removing a persistent column from earlier
+trainedNN = trainedNN[, -c(4)]
+testNN = testNN[, -c(4)]
+trainedNN = trainedNN[, -c(7)]
+testNN = testNN[, -c(7)]
+
+# Constructing the model
+nnFormula <- "BreakingBall + Changeup + FastBall~."
+
+bangTrainModel <- neuralnet(
+                            nnFormula,
+                            
+                            # Using the trainedNN data set with normalization and one hot encoding
+                            data = trainedNN,
+                            
+                            hidden = c(6), # Running with 6 hidden nodes
+                            
+                            rep = 10, # Running with 10 epochs
+                            
+                            # Changing the threshold to deal with an error I was receiving that I had an array less than 0 in the model. I looked for solutions to this online but nothing really fit my situation except for some people mentioning there was something broken in the package that required downloading the package directly from gitHub.The model was also not converging correctly, my thinking is that the data is so flat that it is taking a significant number of steps as well as a little leeway in the threshold to find anything the model is satisfied with.
+                            threshold = .03, 
+                            
+                            #lifesign = "full",
+                            
+                            linear.output = F,
+                            )
+
+# Plotting with plot.nn from the neural net package and using rep = "best" 
+# to plot the epoch with the smallest error
+plot(bangTrainModel, 
+     rep = "best",
+     col.entry = "royalblue",
+     col.out = "pink",
+     col.hidden = "purple",
+     )
+
+# mean of the errors in the bangTrainModel
+mean(bangTrainModel$result.matrix[1,])
+
+# Plots of predicted vs observed
+observedBB = testNN$BreakingBall
+predictedValsBB <- predict(bangTrainModel, testNN)
+residualBB = observedBB - predictedValsBB
+
+observedFB = testNN$FastBall
+predictedValsFB = predict(bangTrainModel, testNN)
+residualFB = observedFB - predictedValsFB
+
+
+observedCH = testNN$Changeup
+predictedValsCH = predict(bangTrainModel, testNN)
+residualCH = observedCH - predictedValsCH
+
+
+par(mfrow = c(2,2))
+
+plot(predictedValsBB, residualBB, main = "Breaking balls", xlab = "Predicted", ylab = "Observed")
+
+plot(observedFB - predictedValsFB,main = "Fast balls", xlab = "Predicted", ylab = "Observed")
+
+plot(observedCH - predictedValsCH, main = "Change-ups", xlab = "Predicted", ylab = "Observed")
+
+# Residual plots
+fittedBB = predictedValsBB
+residualBB = observedBB - fittedBB
+
+fittedFB = predictedValsFB
+residualFB = observedFB - fittedFB
+
+fittedCH = predictedValsCH
+residualCH = observedCH - fittedCH
+
+
+par(mfrow = c(2,2))
+plot(fittedBB, residualBB, main = "Residual plot of breaking balls", xlab = "Fitted", ylab = "Residual")
+plot(fittedFB, residualFB, main = "Residual plot of fast balls", xlab = "Fitted", ylab = "Residual")
+plot(fittedCH, residualCH, main = "Residual plot of change-ups", xlab = "Fitted", ylab = "Residual")
+
+# Metrics for breaking balls
+data.frame(
+  RMSE = RMSE(predictedValsBB, testNN$BreakingBall),
+  MAE = MAE(predictedValsBB, testNN$BreakingBall)
+  )
+
+# Metrics for fast balls
+data.frame(
+  RMSE = RMSE(predictedValsFB, testNN$BreakingBall),
+  MAE = MAE(predictedValsFB, testNN$BreakingBall)
+  )
+
+
+# Metrics for change-ups
+data.frame(
+  RMSE = RMSE(predictedValsCH, testNN$Changeup),
+  MAE = MAE(predictedValsCH, testNN$Changeup)
+  )
+
+# Predicted error rates for the three pitch categories
+RMSE(predictedValsBB, testNN$BreakingBall)/mean(testNN$BreakingBall)
+RMSE(predictedValsFB, testNN$FastBall)/mean(testNN$FastBall)
+RMSE(predictedValsCH, testNN$Changeup)/mean(testNN$Changeup)
+```
+
+
